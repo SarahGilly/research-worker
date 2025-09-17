@@ -1,7 +1,6 @@
 // Research Worker – Super Simple (Node.js, no TypeScript)
 // ------------------------------------------------------
-// Requires Node 18+ (global fetch) and two deps: express, dotenv
-// package.json should have:
+// package.json should contain:
 // {
 //   "scripts": { "start": "node index.js" },
 //   "dependencies": { "dotenv": "^16.4.5", "express": "^4.19.2" }
@@ -17,7 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-// Minimal CORS so browsers can call it directly
+// Simple CORS so browser tools work
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -28,7 +27,7 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
-// ----- JSON schema we want the model to return -----
+// ---------- JSON schema we want back ----------
 const schema = {
   type: 'object',
   additionalProperties: false,
@@ -97,7 +96,7 @@ function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-// ----- OpenAI call (Responses API with structured outputs) -----
+// ---------- OpenAI call (Responses API; structured output) ----------
 async function callOpenAI(company_name, website, evidence) {
   const body = {
     model: 'gpt-4.1-mini',
@@ -116,7 +115,6 @@ async function callOpenAI(company_name, website, evidence) {
         ]
       }
     ],
-    // keep using structured outputs
     text: {
       format: 'json_schema',
       json_schema: { name: 'qualification_output', schema }
@@ -133,11 +131,9 @@ async function callOpenAI(company_name, website, evidence) {
   });
 
   const j = await r.json();
-  if (!r.ok) {
-    throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
-  }
+  if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Extract structured JSON; fall back to text if needed
+  // Extract structured JSON; fall back to text
   const out =
     j?.output?.[0]?.content?.[0]?.json ??
     (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
@@ -145,15 +141,7 @@ async function callOpenAI(company_name, website, evidence) {
   return out ?? j;
 }
 
-  // Extract structured JSON; fall back to text if needed
-  const out =
-    j?.output?.[0]?.content?.[0]?.json ??
-    (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
-
-  return out ?? j;
-}
-
-// ----- Analyze endpoint -----
+// ---------- Analyze endpoint ----------
 app.post('/analyze', async (req, res) => {
   try {
     const { url, company_name } = req.body || {};
@@ -161,11 +149,10 @@ app.post('/analyze', async (req, res) => {
 
     const name = company_name || new URL(url).hostname;
 
-    // TODO: replace with real, approved data sources (Grata, Companies House, etc.)
+    // TODO: replace with approved data sources (Grata, Companies House, etc.)
     const evidence = { note: 'stub evidence — wire real sources later' };
 
     if (!OPENAI_API_KEY) {
-      // Return a stub so you can integrate flows first
       return res.json({
         company_name: name,
         website: url,
@@ -222,7 +209,7 @@ app.post('/analyze', async (req, res) => {
   }
 });
 
-// ----- Start server -----
+// ---------- Start server ----------
 app.listen(PORT, () => {
   console.log(`Research Worker (simple) listening on http://localhost:${PORT}`);
 });
