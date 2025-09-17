@@ -1,14 +1,11 @@
 // Research Worker – Super Simple (Node.js, no TypeScript)
 // ------------------------------------------------------
-// What you need installed: Node 18+ (so that global fetch exists) and npm.
-// How to run:
-//   1) npm init -y
-//   2) npm i express dotenv
-//   3) create .env with OPENAI_API_KEY=sk-... (optional at first)
-//   4) node index.js
-// Endpoints:
-//   GET /healthz  -> { ok: true }
-//   POST /analyze -> returns stub JSON unless OPENAI_API_KEY is set, then calls OpenAI Responses API
+// Requires Node 18+ (global fetch) and two deps: express, dotenv
+// package.json should have:
+// {
+//   "scripts": { "start": "node index.js" },
+//   "dependencies": { "dotenv": "^16.4.5", "express": "^4.19.2" }
+// }
 
 const express = require('express');
 const dotenv = require('dotenv');
@@ -20,11 +17,18 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/healthz', (req, res) => {
-  res.json({ ok: true });
+// Minimal CORS so browsers can call it directly
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
 });
 
-// Minimal JSON schema we want back
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
+// ----- JSON schema we want the model to return -----
 const schema = {
   type: 'object',
   additionalProperties: false,
@@ -68,34 +72,31 @@ const schema = {
       type: 'object',
       additionalProperties: false,
       properties: {
-        size_revenue_over_3m: { type: ['boolean','null'] },
-        vintage_over_15y: { type: ['boolean','null'] },
-        employees_over_30: { type: ['boolean','null'] },
-        aligned_vbu: { type: ['boolean','null'] },
-        geo_ok_eu_na_english: { type: ['boolean','null'] },
-        recurring_over_50: { type: ['boolean','null'] },
-        owns_ip_true: { type: ['boolean','null'] },
-        buy_and_hold_understood: { type: ['boolean','null'] },
-        no_broker: { type: ['boolean','null'] },
-        valuation_not_key: { type: ['boolean','null'] },
-        founder_over_50_true: { type: ['boolean','null'] },
-        debt_under_1x_rev: { type: ['boolean','null'] },
-        auto_filter_disqualify: { type: ['boolean','null'] }
+        size_revenue_over_3m: { type: ['boolean', 'null'] },
+        vintage_over_15y: { type: ['boolean', 'null'] },
+        employees_over_30: { type: ['boolean', 'null'] },
+        aligned_vbu: { type: ['boolean', 'null'] },
+        geo_ok_eu_na_english: { type: ['boolean', 'null'] },
+        recurring_over_50: { type: ['boolean', 'null'] },
+        owns_ip_true: { type: ['boolean', 'null'] },
+        buy_and_hold_understood: { type: ['boolean', 'null'] },
+        no_broker: { type: ['boolean', 'null'] },
+        valuation_not_key: { type: ['boolean', 'null'] },
+        founder_over_50_true: { type: ['boolean', 'null'] },
+        debt_under_1x_rev: { type: ['boolean', 'null'] },
+        auto_filter_disqualify: { type: ['boolean', 'null'] }
       }
     },
     notes: { type: 'string' },
     sources_used: { type: 'array', items: { type: 'string' } }
   },
-  required: ['company_name','website','verdict','reasons','metrics','attributes','criteria_flags']
+  required: ['company_name', 'website', 'verdict', 'reasons', 'metrics', 'attributes', 'criteria_flags']
 };
 
-// Very small helper to call OpenAI Responses API
-// --- replace your existing callOpenAI function with this ---
+// ----- OpenAI call (Responses API with structured outputs) -----
 async function callOpenAI(company_name, website, evidence) {
   const body = {
     model: 'gpt-4.1-mini',
-
-    // Messages
     input: [
       {
         role: 'system',
@@ -111,28 +112,28 @@ async function callOpenAI(company_name, website, evidence) {
         ]
       }
     ],
-
-    // ✨ Structured Outputs (new Responses API shape)
     modalities: ['text'],
     text: {
       format: 'json_schema',
-      json_schema: { name: 'qualification_output', schema } // <-- `schema` is the JSON schema object defined above
+      json_schema: { name: 'qualification_output', schema }
     }
   };
 
   const r = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body)
   });
 
   const j = await r.json();
-  if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
+  if (!r.ok) {
+    throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
+  }
 
-  // Try to extract structured JSON; fall back to text
+  // Extract structured JSON; fall back to text if needed
   const out =
     j?.output?.[0]?.content?.[0]?.json ??
     (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
@@ -143,3 +144,13 @@ async function callOpenAI(company_name, website, evidence) {
 function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
+
+// ----- Analyze endpoint -----
+app.post('/analyze', async (req, res) => {
+  try {
+    const { url, company_name } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'missing url' });
+
+    const name = company_name || new URL(url).hostname;
+
+    //
