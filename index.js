@@ -110,13 +110,13 @@ async function callOpenAI(company_name, website, evidence) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: `company_name: ${company_name}` },
-          { type: 'text', text: `website: ${website}` },
-          { type: 'text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
+          { type: 'input_text', text: `company_name: ${company_name}` },
+          { type: 'input_text', text: `website: ${website}` },
+          { type: 'input_text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
         ]
       }
     ],
-  // NOTE: Do NOT include "modalities" here; the current API rejects it.
+    // keep using structured outputs
     text: {
       format: 'json_schema',
       json_schema: { name: 'qualification_output', schema }
@@ -136,6 +136,14 @@ async function callOpenAI(company_name, website, evidence) {
   if (!r.ok) {
     throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
   }
+
+  // Extract structured JSON; fall back to text if needed
+  const out =
+    j?.output?.[0]?.content?.[0]?.json ??
+    (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
+
+  return out ?? j;
+}
 
   // Extract structured JSON; fall back to text if needed
   const out =
