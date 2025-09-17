@@ -93,6 +93,10 @@ const schema = {
   required: ['company_name', 'website', 'verdict', 'reasons', 'metrics', 'attributes', 'criteria_flags']
 };
 
+function safeParse(s) {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
 // ----- OpenAI call (Responses API with structured outputs) -----
 async function callOpenAI(company_name, website, evidence) {
   const body = {
@@ -112,7 +116,7 @@ async function callOpenAI(company_name, website, evidence) {
         ]
       }
     ],
-    // ⚠️ No `modalities` field — it's not supported.
+  // NOTE: Do NOT include "modalities" here; the current API rejects it.
     text: {
       format: 'json_schema',
       json_schema: { name: 'qualification_output', schema }
@@ -133,25 +137,12 @@ async function callOpenAI(company_name, website, evidence) {
     throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
   }
 
-  // Extract structured JSON; fall back to text if provider returns it that way
-  const out =
-    j?.output?.[0]?.content?.[0]?.json ??
-    (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
-
-  return out ?? j;
-}
-
-
   // Extract structured JSON; fall back to text if needed
   const out =
     j?.output?.[0]?.content?.[0]?.json ??
     (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
 
   return out ?? j;
-}
-
-function safeParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
 }
 
 // ----- Analyze endpoint -----
