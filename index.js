@@ -1,6 +1,6 @@
-// Research Worker – Super Simple (Node.js, no TypeScript)
-// ------------------------------------------------------
-// package.json should contain:
+// Research Worker – Super Simple (Node.js, Chat Completions + Structured Outputs)
+// ------------------------------------------------------------------------------
+// package.json needs:
 // {
 //   "scripts": { "start": "node index.js" },
 //   "dependencies": { "dotenv": "^16.4.5", "express": "^4.19.2" }
@@ -16,7 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-// Simple CORS so browser tools work
+// CORS (so Hoppscotch/Notion etc. can call it)
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -27,7 +27,7 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
-// ---------- JSON schema we want back ----------
+// ---------- JSON schema the model must return ----------
 const schema = {
   type: 'object',
   additionalProperties: false,
@@ -92,15 +92,13 @@ const schema = {
   required: ['company_name', 'website', 'verdict', 'reasons', 'metrics', 'attributes', 'criteria_flags']
 };
 
-function safeParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
+function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
-// ----- OpenAI call (Responses API with structured outputs) -----
+// ---------- OpenAI call (Chat Completions + Structured Outputs) ----------
 async function callOpenAI(company_name, website, evidence) {
   const body = {
     model: 'gpt-4.1-mini',
-    input: [
+    messages: [
       {
         role: 'system',
         content:
@@ -108,22 +106,21 @@ async function callOpenAI(company_name, website, evidence) {
       },
       {
         role: 'user',
-        content: [
-          { type: 'input_text', text: `company_name: ${company_name}` },
-          { type: 'input_text', text: `website: ${website}` },
-          { type: 'input_text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
-        ]
+        content:
+          `company_name: ${company_name}\nwebsite: ${website}\nevidence: ${JSON.stringify(evidence).slice(0, 20000)}`
       }
     ],
-    text: {
-      // key change: schema goes here (not "json_schema")
-      format: 'json_schema',
-      name: 'qualification_output',
-      schema // <- this is the schema object defined above in index.js
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'qualification_output',
+        schema,
+        strict: true
+      }
     }
   };
 
-  const r = await fetch('https://api.openai.com/v1/responses', {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -135,14 +132,11 @@ async function callOpenAI(company_name, website, evidence) {
   const j = await r.json();
   if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Extract structured JSON; fall back to text if needed
-  const out =
-    j?.output?.[0]?.content?.[0]?.json ??
-    (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
-
-  return out ?? j;
+  // Chat Completions returns the JSON in choices[0].message.content (string)
+  const content = j?.choices?.[0]?.message?.content;
+  const parsed = typeof content === 'string' ? safeParse(content) : null;
+  return parsed ?? { raw: j, note: 'Could not parse JSON; see raw.' };
 }
-
 
 // ---------- Analyze endpoint ----------
 app.post('/analyze', async (req, res) => {
