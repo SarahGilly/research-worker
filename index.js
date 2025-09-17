@@ -96,7 +96,7 @@ function safeParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-// ---------- OpenAI call (Responses API; structured output) ----------
+// ----- OpenAI call (Responses API with structured outputs) -----
 async function callOpenAI(company_name, website, evidence) {
   const body = {
     model: 'gpt-4.1-mini',
@@ -116,8 +116,10 @@ async function callOpenAI(company_name, website, evidence) {
       }
     ],
     text: {
+      // key change: schema goes here (not "json_schema")
       format: 'json_schema',
-      json_schema: { name: 'qualification_output', schema }
+      name: 'qualification_output',
+      schema // <- this is the schema object defined above in index.js
     }
   };
 
@@ -133,13 +135,14 @@ async function callOpenAI(company_name, website, evidence) {
   const j = await r.json();
   if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Extract structured JSON; fall back to text
+  // Extract structured JSON; fall back to text if needed
   const out =
     j?.output?.[0]?.content?.[0]?.json ??
     (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
 
   return out ?? j;
 }
+
 
 // ---------- Analyze endpoint ----------
 app.post('/analyze', async (req, res) => {
