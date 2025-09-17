@@ -1,98 +1,3 @@
-// Research Worker – Super Simple (Node.js, no TypeScript)
-// ------------------------------------------------------
-// Requires Node 18+ (global fetch) and two deps: express, dotenv
-// package.json should have:
-// {
-//   "scripts": { "start": "node index.js" },
-//   "dependencies": { "dotenv": "^16.4.5", "express": "^4.19.2" }
-// }
-
-const express = require('express');
-const dotenv = require('dotenv');
-dotenv.config();
-
-const PORT = process.env.PORT || 8080;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-
-const app = express();
-app.use(express.json({ limit: '2mb' }));
-
-// Minimal CORS so browsers can call it directly
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
-
-app.get('/healthz', (_req, res) => res.json({ ok: true }));
-
-// ----- JSON schema we want the model to return -----
-const schema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    company_name: { type: 'string' },
-    website: { type: 'string' },
-    verdict: { type: 'string', enum: ['qualify', 'review', 'disqualify'] },
-    reasons: { type: 'array', items: { type: 'string' } },
-    metrics: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        revenue_usd: { type: ['number', 'null'] },
-        recurring_revenue_pct: { type: ['number', 'null'] },
-        fte_count: { type: ['number', 'null'] },
-        year_founded: { type: ['number', 'null'] },
-        funding_total_usd: { type: ['number', 'null'] },
-        funding_to_revenue_ratio: { type: ['number', 'null'] },
-        debt_to_revenue_ratio: { type: ['number', 'null'] }
-      }
-    },
-    attributes: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        geography: { type: ['string', 'null'] },
-        operates_in_english: { type: ['boolean', 'null'] },
-        vertical: { type: ['string', 'null'] },
-        vms: { type: ['boolean', 'null'] },
-        b2b: { type: ['boolean', 'null'] },
-        software: { type: ['boolean', 'null'] },
-        owns_ip: { type: ['boolean', 'null'] },
-        mission_critical: { type: ['boolean', 'null'] },
-        founder_over_50: { type: ['boolean', 'null'] },
-        private_company: { type: ['boolean', 'null'] },
-        broker_involved: { type: ['boolean', 'null'] },
-        valuation_not_key: { type: ['boolean', 'null'] }
-      }
-    },
-    criteria_flags: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        size_revenue_over_3m: { type: ['boolean', 'null'] },
-        vintage_over_15y: { type: ['boolean', 'null'] },
-        employees_over_30: { type: ['boolean', 'null'] },
-        aligned_vbu: { type: ['boolean', 'null'] },
-        geo_ok_eu_na_english: { type: ['boolean', 'null'] },
-        recurring_over_50: { type: ['boolean', 'null'] },
-        owns_ip_true: { type: ['boolean', 'null'] },
-        buy_and_hold_understood: { type: ['boolean', 'null'] },
-        no_broker: { type: ['boolean', 'null'] },
-        valuation_not_key: { type: ['boolean', 'null'] },
-        founder_over_50_true: { type: ['boolean', 'null'] },
-        debt_under_1x_rev: { type: ['boolean', 'null'] },
-        auto_filter_disqualify: { type: ['boolean', 'null'] }
-      }
-    },
-    notes: { type: 'string' },
-    sources_used: { type: 'array', items: { type: 'string' } }
-  },
-  required: ['company_name', 'website', 'verdict', 'reasons', 'metrics', 'attributes', 'criteria_flags']
-};
-
 // ----- OpenAI call (Responses API with structured outputs) -----
 async function callOpenAI(company_name, website, evidence) {
   const body = {
@@ -112,7 +17,7 @@ async function callOpenAI(company_name, website, evidence) {
         ]
       }
     ],
-    modalities: ['text'],
+    // ⚠️ No `modalities` field — it's not supported.
     text: {
       format: 'json_schema',
       json_schema: { name: 'qualification_output', schema }
@@ -133,88 +38,10 @@ async function callOpenAI(company_name, website, evidence) {
     throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
   }
 
-  // Extract structured JSON; fall back to text if needed
+  // Extract structured JSON; fall back to text if provider returns it that way
   const out =
     j?.output?.[0]?.content?.[0]?.json ??
     (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
 
   return out ?? j;
 }
-
-function safeParse(s) {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-// ----- Analyze endpoint -----
-app.post('/analyze', async (req, res) => {
-  try {
-    const { url, company_name } = req.body || {};
-    if (!url) return res.status(400).json({ error: 'missing url' });
-
-    const name = company_name || new URL(url).hostname;
-
-    // TODO: replace with real, approved data sources (Grata, Companies House, etc.)
-    const evidence = { note: 'stub evidence — wire real sources later' };
-
-    if (!OPENAI_API_KEY) {
-      // Return a stub so you can integrate flows first
-      return res.json({
-        company_name: name,
-        website: url,
-        verdict: 'review',
-        reasons: ['No OpenAI key set; returning stub'],
-        metrics: {
-          revenue_usd: null,
-          recurring_revenue_pct: null,
-          fte_count: null,
-          year_founded: null,
-          funding_total_usd: null,
-          funding_to_revenue_ratio: null,
-          debt_to_revenue_ratio: null
-        },
-        attributes: {
-          geography: null,
-          operates_in_english: null,
-          vertical: null,
-          vms: null,
-          b2b: null,
-          software: null,
-          owns_ip: null,
-          mission_critical: null,
-          founder_over_50: null,
-          private_company: null,
-          broker_involved: null,
-          valuation_not_key: null
-        },
-        criteria_flags: {
-          size_revenue_over_3m: null,
-          vintage_over_15y: null,
-          employees_over_30: null,
-          aligned_vbu: null,
-          geo_ok_eu_na_english: null,
-          recurring_over_50: null,
-          owns_ip_true: null,
-          buy_and_hold_understood: null,
-          no_broker: null,
-          valuation_not_key: null,
-          founder_over_50_true: null,
-          debt_under_1x_rev: null,
-          auto_filter_disqualify: null
-        },
-        notes: 'Stub response because OPENAI_API_KEY is not set.',
-        sources_used: []
-      });
-    }
-
-    const result = await callOpenAI(name, url, evidence);
-    return res.json(result);
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'analysis_failed', message: String(e) });
-  }
-});
-
-// ----- Start server -----
-app.listen(PORT, () => {
-  console.log(`Research Worker (simple) listening on http://localhost:${PORT}`);
-});
