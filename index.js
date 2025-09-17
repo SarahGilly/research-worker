@@ -101,7 +101,12 @@ async function callOpenAI(company_name, website, evidence) {
         { type: 'text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
       ]}
     ],
-    response_format: { type: 'json_schema', json_schema: { name: 'qualification_output', schema } }
+    // 👇 new fields per the updated Responses API
+    modalities: ['text'],
+    text: {
+      format: 'json_schema',
+      json_schema: { name: 'qualification_output', schema }
+    }
   };
 
   const r = await fetch('https://api.openai.com/v1/responses', {
@@ -115,79 +120,8 @@ async function callOpenAI(company_name, website, evidence) {
   const j = await r.json();
   if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Try to extract the model JSON (depends on SDK/server version). Fall back to raw payload.
+  // Try to extract model JSON; fall back to text
   const out = j?.output?.[0]?.content?.[0]?.json || j?.output_text || j;
-  if (typeof out === 'string') {
-    try { return JSON.parse(out); } catch { return j; }
-  }
+  if (typeof out === 'string') { try { return JSON.parse(out); } catch { return j; } }
   return out;
 }
-
-app.post('/analyze', async (req, res) => {
-  try {
-    const { url, company_name } = req.body || {};
-    if (!url) return res.status(400).json({ error: 'missing url' });
-    const name = company_name || new URL(url).hostname;
-
-    // TODO: pull evidence from approved sources (Grata API, Companies House, etc.)
-    const evidence = { note: 'stub evidence — wire real sources later' };
-
-    if (!OPENAI_API_KEY) {
-      // Return a stub so you can integrate first
-      return res.json({
-        company_name: name,
-        website: url,
-        verdict: 'review',
-        reasons: ['No OpenAI key set; returning stub'],
-        metrics: {
-          revenue_usd: null,
-          recurring_revenue_pct: null,
-          fte_count: null,
-          year_founded: null,
-          funding_total_usd: null,
-          funding_to_revenue_ratio: null,
-          debt_to_revenue_ratio: null
-        },
-        attributes: {
-          geography: null,
-          operates_in_english: null,
-          vertical: null,
-          vms: null,
-          b2b: null,
-          software: null,
-          owns_ip: null,
-          mission_critical: null,
-          founder_over_50: null,
-          private_company: null,
-          broker_involved: null,
-          valuation_not_key: null
-        },
-        criteria_flags: {
-          size_revenue_over_3m: null,
-          vintage_over_15y: null,
-          employees_over_30: null,
-          aligned_vbu: null,
-          geo_ok_eu_na_english: null,
-          recurring_over_50: null,
-          owns_ip_true: null,
-          buy_and_hold_understood: null,
-          no_broker: null,
-          valuation_not_key: null,
-          founder_over_50_true: null,
-          debt_under_1x_rev: null,
-          auto_filter_disqualify: null
-        },
-        notes: 'Stub response because OPENAI_API_KEY is not set.',
-        sources_used: []
-      });
-    }
-
-    const result = await callOpenAI(name, url, evidence);
-    return res.json(result);
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'analysis_failed', message: String(e) });
-  }
-});
-
-app.listen(PORT, () => console.log(`Research Worker (simple) listening on http://localhost:${PORT}`));
