@@ -90,22 +90,33 @@ const schema = {
 };
 
 // Very small helper to call OpenAI Responses API
+// --- replace your existing callOpenAI function with this ---
 async function callOpenAI(company_name, website, evidence) {
   const body = {
     model: 'gpt-4.1-mini',
+
+    // Messages
     input: [
-      { role: 'system', content: 'You are an M&A analyst. Evaluate targets strictly against RobCo criteria (size >$3M rev, >15y, >30 FTE; alignment to VBU; EU/NA with English operations; >50% recurring; owns IP; buy-and-hold understood; no broker; valuation not key; founder >50%; debt/investment <1x revenue). Use only the inputs provided. If a field is unknown, set it to null and explain uncertainties in notes. Return JSON EXACTLY matching the JSON Schema.' },
-      { role: 'user', content: [
-        { type: 'text', text: `company_name: ${company_name}` },
-        { type: 'text', text: `website: ${website}` },
-        { type: 'text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
-      ]}
+      {
+        role: 'system',
+        content:
+          'You are an M&A analyst. Evaluate targets strictly against RobCo criteria (size >$3M rev, >15y, >30 FTE; alignment to VBU; EU/NA with English operations; >50% recurring; owns IP; buy-and-hold understood; no broker; valuation not key; founder >50%; debt/investment <1x revenue). Use only the inputs provided. If a field is unknown, set it to null and explain uncertainties in notes. Return JSON EXACTLY matching the JSON Schema.'
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: `company_name: ${company_name}` },
+          { type: 'text', text: `website: ${website}` },
+          { type: 'text', text: `evidence: ${JSON.stringify(evidence).slice(0, 20000)}` }
+        ]
+      }
     ],
-    // 👇 new fields per the updated Responses API
+
+    // ✨ Structured Outputs (new Responses API shape)
     modalities: ['text'],
     text: {
       format: 'json_schema',
-      json_schema: { name: 'qualification_output', schema }
+      json_schema: { name: 'qualification_output', schema } // <-- `schema` is the JSON schema object defined above
     }
   };
 
@@ -117,11 +128,18 @@ async function callOpenAI(company_name, website, evidence) {
     },
     body: JSON.stringify(body)
   });
+
   const j = await r.json();
   if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Try to extract model JSON; fall back to text
-  const out = j?.output?.[0]?.content?.[0]?.json || j?.output_text || j;
-  if (typeof out === 'string') { try { return JSON.parse(out); } catch { return j; } }
-  return out;
+  // Try to extract structured JSON; fall back to text
+  const out =
+    j?.output?.[0]?.content?.[0]?.json ??
+    (typeof j?.output_text === 'string' ? safeParse(j.output_text) : null);
+
+  return out ?? j;
+}
+
+function safeParse(s) {
+  try { return JSON.parse(s); } catch { return null; }
 }
