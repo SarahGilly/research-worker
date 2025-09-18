@@ -184,16 +184,20 @@ async function callOpenAI(company_name, website, evidence, sources_used) {
 // ---------- Analyze endpoint (accepts grata_clip) ----------
 app.post('/analyze', async (req, res) => {
   try {
-    const { url, company_name, grata_clip } = req.body || {};
+    const { url, company_name, grata_clip, apollo_clip } = req.body || {};
     if (!url) return res.status(400).json({ error: 'missing url' });
 
     const name = company_name || new URL(url).hostname;
 
+    // Build evidence from whatever we have right now
     const evidence = {
-      grata_clip: typeof grata_clip === 'string' ? grata_clip.slice(0, 8000) : null
+      grata_clip: typeof grata_clip === 'string' ? grata_clip.slice(0, 8000) : null,
+      apollo_clip: typeof apollo_clip === 'string' ? apollo_clip.slice(0, 8000) : null
     };
+
     const sources_used = [];
     if (evidence.grata_clip) sources_used.push('grata_clip');
+    if (evidence.apollo_clip) sources_used.push('apollo_clip');
 
     if (!OPENAI_API_KEY) {
       return res.json({
@@ -240,8 +244,18 @@ app.post('/analyze', async (req, res) => {
           auto_filter_disqualify: null
         },
         notes: 'Stub response because OPENAI_API_KEY is not set.',
-        sources_used: evidence.grata_clip ? ['grata_clip'] : []
+        sources_used
       });
+    }
+
+    const result = await callOpenAI(name, url, evidence, sources_used);
+    return res.json(result);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'analysis_failed', message: String(e) });
+  }
+});
+
     }
 
     const result = await callOpenAI(name, url, evidence, sources_used);
