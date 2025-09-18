@@ -26,8 +26,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
-
-// ---------- JSON schema the model must return ----------
+// ----- JSON schema we want the model to return (with required for all nested objects) -----
 const schema = {
   type: 'object',
   additionalProperties: false,
@@ -47,7 +46,16 @@ const schema = {
         funding_total_usd: { type: ['number', 'null'] },
         funding_to_revenue_ratio: { type: ['number', 'null'] },
         debt_to_revenue_ratio: { type: ['number', 'null'] }
-      }
+      },
+      required: [
+        'revenue_usd',
+        'recurring_revenue_pct',
+        'fte_count',
+        'year_founded',
+        'funding_total_usd',
+        'funding_to_revenue_ratio',
+        'debt_to_revenue_ratio'
+      ]
     },
     attributes: {
       type: 'object',
@@ -65,7 +73,21 @@ const schema = {
         private_company: { type: ['boolean', 'null'] },
         broker_involved: { type: ['boolean', 'null'] },
         valuation_not_key: { type: ['boolean', 'null'] }
-      }
+      },
+      required: [
+        'geography',
+        'operates_in_english',
+        'vertical',
+        'vms',
+        'b2b',
+        'software',
+        'owns_ip',
+        'mission_critical',
+        'founder_over_50',
+        'private_company',
+        'broker_involved',
+        'valuation_not_key'
+      ]
     },
     criteria_flags: {
       type: 'object',
@@ -84,15 +106,36 @@ const schema = {
         founder_over_50_true: { type: ['boolean', 'null'] },
         debt_under_1x_rev: { type: ['boolean', 'null'] },
         auto_filter_disqualify: { type: ['boolean', 'null'] }
-      }
+      },
+      required: [
+        'size_revenue_over_3m',
+        'vintage_over_15y',
+        'employees_over_30',
+        'aligned_vbu',
+        'geo_ok_eu_na_english',
+        'recurring_over_50',
+        'owns_ip_true',
+        'buy_and_hold_understood',
+        'no_broker',
+        'valuation_not_key',
+        'founder_over_50_true',
+        'debt_under_1x_rev',
+        'auto_filter_disqualify'
+      ]
     },
     notes: { type: 'string' },
     sources_used: { type: 'array', items: { type: 'string' } }
   },
-  required: ['company_name', 'website', 'verdict', 'reasons', 'metrics', 'attributes', 'criteria_flags']
+  required: [
+    'company_name',
+    'website',
+    'verdict',
+    'reasons',
+    'metrics',
+    'attributes',
+    'criteria_flags'
+  ]
 };
-
-function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
 // ---------- OpenAI call (Chat Completions + Structured Outputs) ----------
 async function callOpenAI(company_name, website, evidence) {
