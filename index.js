@@ -190,15 +190,18 @@ async function callOpenAI(company_name, website, evidence) {
 // ---------- Analyze endpoint ----------
 app.post('/analyze', async (req, res) => {
   try {
-    const { url, company_name } = req.body || {};
+    const { url, company_name, grata_clip } = req.body || {};
     if (!url) return res.status(400).json({ error: 'missing url' });
 
     const name = company_name || new URL(url).hostname;
 
-    // TODO: replace with approved data sources (Grata, Companies House, etc.)
-    const evidence = { note: 'stub evidence — wire real sources later' };
+    // Build evidence from whatever we have right now
+    const evidence = {
+      grata_clip: typeof grata_clip === 'string' ? grata_clip.slice(0, 8000) : null
+    };
 
     if (!OPENAI_API_KEY) {
+      // Return a stub so you can integrate flows first
       return res.json({
         company_name: name,
         website: url,
@@ -243,8 +246,18 @@ app.post('/analyze', async (req, res) => {
           auto_filter_disqualify: null
         },
         notes: 'Stub response because OPENAI_API_KEY is not set.',
-        sources_used: []
+        sources_used: evidence.grata_clip ? ['grata_clip'] : []
       });
+    }
+
+    const result = await callOpenAI(name, url, evidence);
+    return res.json(result);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'analysis_failed', message: String(e) });
+  }
+});
+
     }
 
     const result = await callOpenAI(name, url, evidence);
