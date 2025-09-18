@@ -1,6 +1,6 @@
-// Research Worker – Super Simple (Node.js, Chat Completions + Structured Outputs)
-// ------------------------------------------------------------------------------
-// package.json needs:
+// Research Worker – Simple (Node.js, Chat Completions + Structured Outputs)
+// ------------------------------------------------------------------------
+// package.json should have:
 // {
 //   "scripts": { "start": "node index.js" },
 //   "dependencies": { "dotenv": "^16.4.5", "express": "^4.19.2" }
@@ -16,7 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-// CORS (so Hoppscotch/Notion etc. can call it)
+// CORS so browser tools can call it
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -26,7 +26,8 @@ app.use((req, res, next) => {
 });
 
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
-// ----- JSON schema we want the model to return (with required for all nested objects) -----
+
+// ---------- JSON schema (all nested objects have required[]) ----------
 const schema = {
   type: 'object',
   additionalProperties: false,
@@ -126,7 +127,7 @@ const schema = {
     notes: { type: 'string' },
     sources_used: { type: 'array', items: { type: 'string' } }
   },
-    required: [
+  required: [
     'company_name',
     'website',
     'verdict',
@@ -134,17 +135,15 @@ const schema = {
     'metrics',
     'attributes',
     'criteria_flags',
-    'notes',           // ← add this
-    'sources_used'     // ← and this
+    'notes',
+    'sources_used'
   ]
 };
-function safeParse(s) {
-  try { return JSON.parse(s); }
-  catch { return null; }
-}
 
-// ---------- OpenAI call (Chat Completions + Structured Outputs) ----------
-async function callOpenAI(company_name, website, evidence) {
+function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
+
+// ---------- OpenAI (Chat Completions + Structured Outputs) ----------
+async function callOpenAI(company_name, website, evidence, sources_used) {
   const body = {
     model: 'gpt-4.1-mini',
     messages: [
@@ -156,16 +155,12 @@ async function callOpenAI(company_name, website, evidence) {
       {
         role: 'user',
         content:
-          `company_name: ${company_name}\nwebsite: ${website}\nevidence: ${JSON.stringify(evidence).slice(0, 20000)}`
+          `company_name: ${company_name}\nwebsite: ${website}\nsources_used: ${JSON.stringify(sources_used)}\nevidence: ${JSON.stringify(evidence).slice(0, 20000)}`
       }
     ],
     response_format: {
       type: 'json_schema',
-      json_schema: {
-        name: 'qualification_output',
-        schema,
-        strict: true
-      }
+      json_schema: { name: 'qualification_output', schema, strict: true }
     }
   };
 
@@ -181,13 +176,12 @@ async function callOpenAI(company_name, website, evidence) {
   const j = await r.json();
   if (!r.ok) throw new Error(`OpenAI error ${r.status}: ${JSON.stringify(j)}`);
 
-  // Chat Completions returns the JSON in choices[0].message.content (string)
   const content = j?.choices?.[0]?.message?.content;
   const parsed = typeof content === 'string' ? safeParse(content) : null;
   return parsed ?? { raw: j, note: 'Could not parse JSON; see raw.' };
 }
 
-// ---------- Analyze endpoint ----------
+// ---------- Analyze endpoint (accepts grata_clip) ----------
 app.post('/analyze', async (req, res) => {
   try {
     const { url, company_name, grata_clip } = req.body || {};
@@ -195,13 +189,13 @@ app.post('/analyze', async (req, res) => {
 
     const name = company_name || new URL(url).hostname;
 
-    // Build evidence from whatever we have right now
     const evidence = {
       grata_clip: typeof grata_clip === 'string' ? grata_clip.slice(0, 8000) : null
     };
+    const sources_used = [];
+    if (evidence.grata_clip) sources_used.push('grata_clip');
 
     if (!OPENAI_API_KEY) {
-      // Return a stub so you can integrate flows first
       return res.json({
         company_name: name,
         website: url,
@@ -250,17 +244,7 @@ app.post('/analyze', async (req, res) => {
       });
     }
 
-    const result = await callOpenAI(name, url, evidence);
-    return res.json(result);
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'analysis_failed', message: String(e) });
-  }
-});
-
-    }
-
-    const result = await callOpenAI(name, url, evidence);
+    const result = await callOpenAI(name, url, evidence, sources_used);
     return res.json(result);
   } catch (e) {
     console.error(e);
