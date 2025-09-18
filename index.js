@@ -138,6 +138,10 @@ const schema = {
     'sources_used'     // ← and this
   ]
 };
+function safeParse(s) {
+  try { return JSON.parse(s); }
+  catch { return null; }
+}
 
 // ---------- OpenAI call (Chat Completions + Structured Outputs) ----------
 async function callOpenAI(company_name, website, evidence) {
