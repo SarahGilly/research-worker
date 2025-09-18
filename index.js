@@ -126,14 +126,16 @@ const schema = {
     notes: { type: 'string' },
     sources_used: { type: 'array', items: { type: 'string' } }
   },
-  required: [
+    required: [
     'company_name',
     'website',
     'verdict',
     'reasons',
     'metrics',
     'attributes',
-    'criteria_flags'
+    'criteria_flags',
+    'notes',           // ← add this
+    'sources_used'     // ← and this
   ]
 };
 
